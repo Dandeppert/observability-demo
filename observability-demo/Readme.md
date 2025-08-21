@@ -48,7 +48,7 @@ This project showcases **enterprise-grade observability patterns** used in produ
 ### Interactive Observability Endpoints
 *Testing endpoints that demonstrate enterprise monitoring patterns*
 
-![Observability Endpoints](screenshots/observability-endpoints.png)
+![Observability Endpoints](screenshots/main-endpoints.png)
 
 **Demonstrates:**
 - Health Check endpoint (17 requests) - Kubernetes liveness probes
