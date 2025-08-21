@@ -1,0 +1,100 @@
+# Backend service deployment and service definition
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-deployment
+  namespace: observability-demo
+  labels:
+    app: backend
+    version: v1
+    component: api
+spec:
+  # Replica count - Kubernetes will maintain this many instances
+  # New Relic monitors scaling events and pod health
+  replicas: 2
+  
+  selector:
+    matchLabels:
+      app: backend
+  
+  template:
+    metadata:
+      labels:
+        app: backend
+        version: v1
+        component: api
+      # Annotations can include monitoring configuration
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "5001"
+        prometheus.io/path: "/metrics"
+    
+    spec:
+      containers:
+      - name: backend
+        # Use your built image here
+        image: observability-demo/backend:latest
+        
+        # Image pull policy for local development
+        imagePullPolicy: Never
+        
+        ports:
+        - containerPort: 5001
+          name: http
+          protocol: TCP
+        
+        # Environment variables - configuration for containerized apps
+        env:
+        - name: APP_VERSION
+          value: "1.0.0"
+        - name: ENVIRONMENT
+          value: "kubernetes"
+        
+        # Resource limits - important for performance monitoring
+        # New Relic tracks resource usage against these limits
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        
+        # Liveness probe - Kubernetes restarts container if this fails
+        # New Relic monitors probe success/failure rates
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 5001
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        # Readiness probe - Kubernetes removes from service if not ready
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 5001
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 2
+
+---
+# Service to expose backend pods
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-service
+  namespace: observability-demo
+  labels:
+    app: backend
+spec:
+  selector:
+    app: backend
+  ports:
+  - port: 5001
+    targetPort: 5001
+    name: http
+  type: ClusterIP  # Internal service, not exposed outside cluster

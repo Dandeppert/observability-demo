@@ -1,0 +1,9 @@
+# Namespace isolates resources - common in enterprise Kubernetes
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability-demo
+  labels:
+    purpose: "learning"
+    team: "platform"
+    # Labels help with monitoring and organization in large clusters

@@ -1,0 +1,9 @@
+# Web framework
+Flask==2.3.3
+
+# HTTP client for calling backend services
+# This represents service-to-service communication that New Relic tracks
+requests==2.31.0
+
+# Production WSGI server (optional, for production deployments)
+gunicorn==21.2.0
