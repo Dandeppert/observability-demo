@@ -5,7 +5,7 @@ import os
 import random
 from datetime import datetime
 
-# Configure structured logging - New Relic ingests these logs
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -14,190 +14,145 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-# Service configuration
-SERVICE_NAME = "backend-api"
+# Environment variables
 APP_VERSION = os.getenv('APP_VERSION', '1.0.0')
 
-# Simulate database or external service
-class MockDatabase:
-    """
-    Simulates database operations that would be monitored by APM tools
-    
-    OBSERVABILITY NOTE: In real applications, New Relic tracks:
-    - Database query performance
-    - Connection pool metrics
-    - Slow query identification
-    - Database error rates
-    """
-    
-    def __init__(self):
-        self.connection_count = 0
-        self.query_count = 0
-    
-    def connect(self):
-        """Simulate database connection with random latency"""
-        self.connection_count += 1
-        # Simulate connection time (New Relic would track this)
-        connection_time = random.uniform(0.01, 0.1)  # 10-100ms
-        time.sleep(connection_time)
-        logger.info(f"Database connected in {connection_time:.3f}s")
-        return connection_time
-    
-    def query(self, query_type="SELECT"):
-        """Simulate database query with realistic latency"""
-        self.query_count += 1
-        
-        # Simulate different query performance characteristics
-        if query_type == "SELECT":
-            query_time = random.uniform(0.005, 0.05)  # 5-50ms for reads
-        elif query_type == "INSERT":
-            query_time = random.uniform(0.01, 0.1)    # 10-100ms for writes
-        else:
-            query_time = random.uniform(0.02, 0.2)    # 20-200ms for complex queries
-        
-        time.sleep(query_time)
-        logger.info(f"Database {query_type} completed in {query_time:.3f}s")
-        
-        # Simulate occasional slow queries (what New Relic would alert on)
-        if random.random() < 0.1:  # 10% chance of slow query
-            slow_time = random.uniform(0.5, 1.0)
-            time.sleep(slow_time)
-            logger.warning(f"Slow query detected: additional {slow_time:.3f}s")
-        
-        return query_time
-
-# Initialize mock database
-db = MockDatabase()
-
-@app.route('/api/data')
-def get_data():
-    """
-    Main API endpoint that simulates typical backend operations
-    
-    OBSERVABILITY NOTE: This endpoint demonstrates:
-    - API performance monitoring
-    - Database interaction tracking
-    - Business logic timing
-    - Error handling and logging
-    """
-    start_time = time.time()
-    
-    try:
-        logger.info("API request received for data endpoint")
-        
-        # Simulate database operations (New Relic tracks these)
-        db.connect()
-        db.query("SELECT")
-        
-        # Simulate business logic processing
-        processing_time = random.uniform(0.01, 0.05)
-        time.sleep(processing_time)
-        
-        # Calculate total response time
-        total_time = time.time() - start_time
-        
-        response_data = {
-            "service": SERVICE_NAME,
-            "version": APP_VERSION,
-            "message": "Data retrieved successfully",
-            "timestamp": datetime.now().isoformat(),
-            "processing_time_ms": round(total_time * 1000, 2),
-            "database_queries": db.query_count,
-            "database_connections": db.connection_count,
-            "status": "success"
-        }
-        
-        logger.info(f"API request completed in {total_time:.3f}s")
-        return jsonify(response_data)
-        
-    except Exception as e:
-        # Error handling - New Relic tracks exceptions and error rates
-        logger.error(f"API error: {str(e)}")
-        return jsonify({
-            "service": SERVICE_NAME,
-            "error": str(e),
-            "timestamp": datetime.now().isoformat(),
-            "status": "error"
-        }), 500
+# Metrics tracking
+request_count = 0
+error_count = 0
+response_times = []
+start_time = time.time()  # Track service start time
 
 @app.route('/health')
 def health_check():
-    """
-    Health check endpoint for Kubernetes probes
+    """Health check endpoint"""
+    global request_count
+    request_count += 1
     
-    OBSERVABILITY NOTE: Kubernetes uses this for:
-    - Liveness probes (restart container if unhealthy)
-    - Readiness probes (remove from load balancer if not ready)
-    New Relic monitors these to track service availability
-    """
-    try:
-        # Test database connectivity as part of health check
-        connection_time = db.connect()
-        
-        health_data = {
-            "service": SERVICE_NAME,
-            "status": "healthy",
-            "version": APP_VERSION,
-            "timestamp": datetime.now().isoformat(),
-            "database_status": "connected",
-            "database_connection_time_ms": round(connection_time * 1000, 2),
-            "uptime_checks": db.connection_count
-        }
-        
-        return jsonify(health_data), 200
-        
-    except Exception as e:
-        logger.error(f"Health check failed: {str(e)}")
-        return jsonify({
-            "service": SERVICE_NAME,
-            "status": "unhealthy",
-            "error": str(e),
-            "timestamp": datetime.now().isoformat()
-        }), 503
+    return jsonify({
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "version": APP_VERSION,
+        "service": "backend-api",
+        "uptime": "operational"
+    }), 200
+
+@app.route('/api/data')
+def get_data():
+    """Main API endpoint that frontend calls"""
+    global request_count, response_times
+    start_time = time.time()
+    request_count += 1
+    
+    # Simulate some processing time
+    processing_time = random.uniform(0.1, 0.5)
+    time.sleep(processing_time)
+    
+    response_time = time.time() - start_time
+    response_times.append(response_time)
+    
+    logger.info(f"API request #{request_count} completed in {response_time:.3f}s")
+    
+    return jsonify({
+        "message": "Backend API Connected",
+        "timestamp": datetime.now().isoformat(),
+        "version": APP_VERSION,
+        "request_id": request_count,
+        "response_time_ms": round(response_time * 1000, 2),
+        "status": "success"
+    })
 
 @app.route('/metrics')
-def metrics():
-    """
-    Metrics endpoint for monitoring systems
+def prometheus_metrics():
+    """Prometheus-compatible metrics endpoint - returns TEXT format"""
+    avg_response_time = sum(response_times) / len(response_times) if response_times else 0
     
-    OBSERVABILITY NOTE: This exposes application metrics that monitoring
-    tools like New Relic, Prometheus, or DataDog can scrape
-    """
-    metrics_data = {
-        "service_name": SERVICE_NAME,
-        "version": APP_VERSION,
-        "database_connections_total": db.connection_count,
-        "database_queries_total": db.query_count,
-        "timestamp": datetime.now().isoformat(),
-        "uptime": "healthy"  # In production, this would be actual uptime
-    }
+    # Prometheus format metrics (must be text/plain content type)
+    metrics_text = f"""# HELP backend_requests_total Total backend requests
+# TYPE backend_requests_total counter
+backend_requests_total {request_count}
+
+# HELP backend_request_duration_seconds Backend request duration
+# TYPE backend_request_duration_seconds histogram
+backend_request_duration_seconds_sum {sum(response_times)}
+backend_request_duration_seconds_count {len(response_times)}
+
+# HELP backend_errors_total Total backend errors
+# TYPE backend_errors_total counter
+backend_errors_total {error_count}
+
+# HELP backend_version Backend version info
+# TYPE backend_version gauge
+backend_version{{version="{APP_VERSION}"}} 1
+
+# HELP backend_uptime_seconds Backend uptime in seconds
+# TYPE backend_uptime_seconds gauge
+backend_uptime_seconds {time.time()}
+
+# HELP backend_avg_response_time_seconds Average response time
+# TYPE backend_avg_response_time_seconds gauge
+backend_avg_response_time_seconds {avg_response_time}
+"""
     
-    return jsonify(metrics_data)
+    # IMPORTANT: Must return text/plain content type for Prometheus
+    return metrics_text, 200, {'Content-Type': 'text/plain; charset=utf-8'}
 
 @app.route('/api/slow')
 def slow_api():
-    """
-    Intentionally slow endpoint for testing performance monitoring
+    """Slow API endpoint for testing"""
+    global request_count
+    request_count += 1
     
-    OBSERVABILITY NOTE: This simulates the type of performance bottleneck
-    that New Relic's APM would identify and alert on
-    """
-    logger.warning("Slow API endpoint accessed")
-    
-    # Simulate slow external service call
+    # Simulate slow operation
     time.sleep(2)
     
-    # Simulate multiple slow database queries
-    db.query("COMPLEX_JOIN")
-    db.query("COMPLEX_JOIN")
-    
     return jsonify({
-        "message": "Slow operation completed",
+        "message": "Slow API operation completed",
         "delay_seconds": 2,
-        "purpose": "Performance testing",
         "timestamp": datetime.now().isoformat()
     })
 
+@app.route('/api/error')
+def error_api():
+    """Error API endpoint for testing"""
+    global request_count, error_count
+    request_count += 1
+    error_count += 1
+    
+    # Random error simulation
+    error_types = [
+        ("Database timeout", 503),
+        ("Validation failed", 400),
+        ("Service unavailable", 503),
+        ("Internal error", 500)
+    ]
+    
+    error_msg, status_code = random.choice(error_types)
+    
+    logger.error(f"API error: {error_msg}")
+    
+    return jsonify({
+        "error": error_msg,
+        "timestamp": datetime.now().isoformat(),
+        "total_errors": error_count
+    }), status_code
+
+@app.route('/')
+def root():
+    """Root endpoint"""
+    return jsonify({
+        "service": "Observability Demo Backend",
+        "version": APP_VERSION,
+        "status": "running",
+        "endpoints": {
+            "health": "/health",
+            "metrics": "/metrics",
+            "data": "/api/data",
+            "slow": "/api/slow", 
+            "error": "/api/error"
+        }
+    })
+
 if __name__ == '__main__':
-    logger.info(f"Starting {SERVICE_NAME} version {APP_VERSION}")
+    logger.info(f"Starting backend service version {APP_VERSION}")
     app.run(host='0.0.0.0', port=5001, debug=False)

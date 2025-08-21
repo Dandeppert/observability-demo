@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # Environment variables
-BACKEND_URL = os.getenv('BACKEND_URL', 'http://backend-service:5001')
+BACKEND_URL = os.getenv('BACKEND_URL', 'http://backend:5001')
 APP_VERSION = os.getenv('APP_VERSION', '1.0.0')
 
 # Metrics tracking
@@ -87,7 +87,7 @@ load_thread.start()
 @app.route('/')
 def home():
     """Enhanced home page with modern UI"""
-    global request_count, response_times
+    global request_count, response_times, error_count
     start_time = time.time()
     request_count += 1
     
@@ -95,8 +95,11 @@ def home():
         logger.info(f"Request #{request_count} from {request.remote_addr}")
         
         # Call backend service
-        response = requests.get(f"{BACKEND_URL}/api/data", timeout=5)
-        backend_data = response.json()
+        try:
+            response = requests.get(f"{BACKEND_URL}/api/data", timeout=5)
+            backend_data = response.json()
+        except:
+            backend_data = {"message": "Backend unavailable"}
         
         # Calculate response time
         response_time = time.time() - start_time
@@ -475,30 +478,33 @@ def home():
             endpoint_stats=endpoint_stats
         )
         
-    except requests.RequestException as e:
-        global error_count
+    except Exception as e:
         error_count += 1
         response_time = time.time() - start_time
         update_endpoint_stats('/', response_time, is_error=True)
-        logger.error(f"Backend service error: {str(e)}")
+        logger.error(f"Application error: {str(e)}")
         
         return f"""
         <div style="text-align: center; padding: 50px; font-family: Arial, sans-serif;">
-            <h1 style="color: #e74c3c;">🚫 Service Unavailable</h1>
-            <p>Backend service is currently unavailable</p>
+            <h1 style="color: #e74c3c;">🚫 Service Error</h1>
+            <p>Application error occurred</p>
             <p style="color: #7f8c8d;">Error: {str(e)}</p>
             <a href="/" style="color: #3498db;">← Refresh</a>
         </div>
-        """, 503
+        """, 500
 
 @app.route('/health')
 def health_check():
     """Enhanced health check with detailed status"""
     try:
         start_time = time.time()
-        response = requests.get(f"{BACKEND_URL}/health", timeout=2)
-        response_time = time.time() - start_time
-        backend_healthy = response.status_code == 200
+        try:
+            response = requests.get(f"{BACKEND_URL}/health", timeout=2)
+            response_time = time.time() - start_time
+            backend_healthy = response.status_code == 200
+        except:
+            response_time = time.time() - start_time
+            backend_healthy = False
         
         update_endpoint_stats('/health', response_time, not backend_healthy)
         
